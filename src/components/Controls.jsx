@@ -17,6 +17,7 @@ const Controls = ({ responseRef }) => {
 	const GEMINI_API_KEY = credentials.geminiKey || import.meta.env.VITE_GEMINI_KEY;
 	const mediaRecorderRef = useRef(null);
 	const audioChunksRef = useRef([]);
+	const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 
 	// ✅ Handle sending typed messages
 	const handleSendMessage = async () => {
@@ -27,9 +28,16 @@ const Controls = ({ responseRef }) => {
 		setInputValue("");
 		showTypingIndicator(responseRef);
 		try {
-			const reply = await window.electronAPI.sendPrompt(userMessage);
+			const geminiResponse = await fetch(`${BACKEND_URL}/ask-gemini`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ userMessage: userMessage, geminiApiKey: GEMINI_API_KEY }),
+			});
+			const geminiText = await geminiResponse.json();
 			removeTypingIndicator(responseRef);
-			addMessage(responseRef, 'system', reply);
+			addMessage(responseRef, 'system', geminiText);
 		} catch (err) {
 			console.error('Error:', err);
 			removeTypingIndicator(responseRef);
@@ -72,13 +80,23 @@ const Controls = ({ responseRef }) => {
 						});
 
 						const data = await response.json();
+						console.log(data)
 						const loaderMsg = document.getElementById("transcribing-msg");
 						if (loaderMsg) loaderMsg.remove();
 
 						addMessage(responseRef, "user", data.text);
 						showTypingIndicator(responseRef);
+						console.log(JSON.stringify({ userMessage: data.text, geminiApiKey: GEMINI_API_KEY }));
+						const geminiResponse = await fetch(`${BACKEND_URL}/ask-gemini`, {
+							method: "POST",
+							headers: {
+								"Content-Type": "application/json",
+							},
+							body: JSON.stringify({ userMessage: data.text, geminiApiKey: GEMINI_API_KEY }),
+						});
+						const geminiText = await geminiResponse.json();
 						removeTypingIndicator(responseRef);
-						addMessage(responseRef, "system", "ha be bol");
+						addMessage(responseRef, "system", geminiText);
 					} catch (err) {
 						console.error(err);
 						addMessage(responseRef, "system", "Transcription failed: " + err.message);
