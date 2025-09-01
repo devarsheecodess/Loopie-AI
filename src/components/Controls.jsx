@@ -5,6 +5,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAtom } from 'jotai';
 import { settingsVisibleAtom, calendarVisibleAtom, credentialsAtom } from '../lib/atoms'
 import { addMessage, removeTypingIndicator, showTypingIndicator } from "../utils/chatElements"; // put function in utils if you want
+import { getScreenshotableWindows, getWindowScreenshot } from "tauri-plugin-screenshots-api";
 
 const Controls = ({ responseRef }) => {
 	const win = getCurrentWindow();
@@ -130,17 +131,14 @@ const Controls = ({ responseRef }) => {
 
 	const handleCapture = async () => {
 		try {
-			addMessage('user', 'Capturing screen...');
-			showTypingIndicator();
-			const filePath = await window.electronAPI.captureScreen();
-
-			const imgBuffer = await fetch(filePath).then(res => res.arrayBuffer());
-
-			const base64Image = arrayBufferToBase64(imgBuffer);
-
-			const response = await window.electronAPI.analyseImage(base64Image);
-
-			addMessage('system', response);
+			const windows = await getScreenshotableWindows();
+			if (windows.length === 0) {
+				alert("No windows found to take screenshot");
+				return;
+			}
+			// Take screenshot of the first available window
+			const filePath = await getWindowScreenshot(windows[0].id);
+			console.log(`Screenshot saved at: ${filePath}`);
 		} catch (err) {
 			console.error(err);
 			addMessage('system', err);

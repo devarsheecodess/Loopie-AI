@@ -4,9 +4,9 @@
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
-        // add other plugins if needed, e.g. .plugin(tauri_plugin_someother::init())
+        .plugin(tauri_plugin_screenshots::init())
         .setup(|app| {
-            // Additional setup if you need it (optional)
+            // Additional setup if you need it
             Ok(())
         })
         .run(tauri::generate_context!())
