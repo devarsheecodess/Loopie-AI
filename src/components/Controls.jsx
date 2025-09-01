@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react'
-import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Calendar, Circle, Eye, Mic, Settings, X } from "lucide-react";
 import calendarLogo from "../assets/calendar-connect.png";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAtom } from 'jotai';
 import { settingsVisibleAtom, calendarVisibleAtom, credentialsAtom } from '../lib/atoms'
 import { addMessage, removeTypingIndicator, showTypingIndicator } from "../utils/chatElements"; // put function in utils if you want
@@ -11,6 +11,8 @@ const Controls = ({ responseRef }) => {
 	const [settingsModal, setSettingsModal] = useAtom(settingsVisibleAtom);
 	const [calendarModal, setCalendarModal] = useAtom(calendarVisibleAtom);
 	const [isRecording, setIsRecording] = useState(false);
+	const [imgSrc, setImgSrc] = useState(null);
+
 	const [inputValue, setInputValue] = useState(""); // <-- state for text input
 	const [credentials] = useAtom(credentialsAtom);
 	const GROQ_API_KEY = credentials.groqKey || import.meta.env.VITE_GROQ_KEY;
