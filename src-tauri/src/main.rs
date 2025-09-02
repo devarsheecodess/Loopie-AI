@@ -5,7 +5,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_screenshots::init())
-        .setup(|app| {
+        .setup(|_app| {
             // Additional setup if you need it
             Ok(())
         })

@@ -4,8 +4,9 @@ import calendarLogo from "../assets/calendar-connect.png";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useAtom } from 'jotai';
 import { settingsVisibleAtom, calendarVisibleAtom, credentialsAtom } from '../lib/atoms'
-import { addMessage, removeTypingIndicator, showTypingIndicator } from "../utils/chatElements"; // put function in utils if you want
+import { addMessage, removeTypingIndicator, showTypingIndicator } from "../functions/chatElements"; // put function in utils if you want
 import { getScreenshotableWindows, getWindowScreenshot } from "tauri-plugin-screenshots-api";
+import fs from "fs";
 
 const Controls = ({ responseRef }) => {
 	const win = getCurrentWindow();
@@ -131,14 +132,34 @@ const Controls = ({ responseRef }) => {
 
 	const handleCapture = async () => {
 		try {
-			const windows = await getScreenshotableWindows();
-			if (windows.length === 0) {
-				alert("No windows found to take screenshot");
-				return;
-			}
-			// Take screenshot of the first available window
-			const filePath = await getWindowScreenshot(windows[0].id);
-			console.log(`Screenshot saved at: ${filePath}`);
+			addMessage(responseRef, "user", "Capturing screen...");
+			const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+			await win.hide()
+			const track = stream.getVideoTracks()[0];
+			const imageCapture = new ImageCapture(track);
+			const bitmap = await imageCapture.grabFrame();
+
+			showTypingIndicator(responseRef);
+			const canvas = document.createElement('canvas');
+			canvas.width = bitmap.width;
+			canvas.height = bitmap.height;
+			const ctx = canvas.getContext('2d');
+			ctx.drawImage(bitmap, 0, 0);
+			const base64Image = canvas.toDataURL('image/png').split(',')[1];
+			track.stop();
+			await win.show()
+
+			const response = await fetch(`${BACKEND_URL}/analyse-img`, {
+				method: "POST",
+				headers: {
+					"Content-Type": "application/json",
+				},
+				body: JSON.stringify({ image: base64Image, geminiApiKey: GEMINI_API_KEY }),
+			});
+			const data = await response.json()
+			console.log(data)
+			removeTypingIndicator(responseRef);
+			addMessage(responseRef, "system", data.description);
 		} catch (err) {
 			console.error(err);
 			addMessage('system', err);
@@ -146,7 +167,7 @@ const Controls = ({ responseRef }) => {
 		} finally {
 			removeTypingIndicator();
 		}
-	}
+	};
 
 	const handleCalendar = () => {
 		setSettingsModal(false);
