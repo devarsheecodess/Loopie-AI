@@ -1,29 +1,25 @@
-import React, { useState, useRef } from 'react'
-import { Calendar, Circle, Eye, Mic, Settings, X } from "lucide-react";
-import calendarLogo from "../assets/calendar-connect.png";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { useState, useRef } from 'react'
 import { useAtom } from 'jotai';
+import { Calendar, Circle, Eye, Mic, Settings, X } from "lucide-react";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { settingsVisibleAtom, calendarVisibleAtom, credentialsAtom } from '../lib/atoms'
-import { addMessage, removeTypingIndicator, showTypingIndicator } from "../functions/chatElements"; // put function in utils if you want
-import { getScreenshotableWindows, getWindowScreenshot } from "tauri-plugin-screenshots-api";
-import fs from "fs";
+import { addMessage, removeTypingIndicator, showTypingIndicator } from "../functions/chatElements";
+import calendarLogo from "../assets/calendar-connect.png";
 
 const Controls = ({ responseRef }) => {
 	const win = getCurrentWindow();
 	const [settingsModal, setSettingsModal] = useAtom(settingsVisibleAtom);
 	const [calendarModal, setCalendarModal] = useAtom(calendarVisibleAtom);
 	const [isRecording, setIsRecording] = useState(false);
-	const [imgSrc, setImgSrc] = useState(null);
-
-	const [inputValue, setInputValue] = useState(""); // <-- state for text input
+	const [inputValue, setInputValue] = useState("");
 	const [credentials] = useAtom(credentialsAtom);
 	const GROQ_API_KEY = credentials.groqKey || import.meta.env.VITE_GROQ_KEY;
 	const GEMINI_API_KEY = credentials.geminiKey || import.meta.env.VITE_GEMINI_KEY;
 	const mediaRecorderRef = useRef(null);
 	const audioChunksRef = useRef([]);
 	const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
+	const CLOUDFARE_BACKEND_URL = import.meta.env.VITE_CLOUDFARE_BACKEND_URL;
 
-	// ✅ Handle sending typed messages
 	const handleSendMessage = async () => {
 		const userMessage = inputValue.trim();
 		if (!userMessage) return;
@@ -32,16 +28,16 @@ const Controls = ({ responseRef }) => {
 		setInputValue("");
 		showTypingIndicator(responseRef);
 		try {
-			const geminiResponse = await fetch(`${BACKEND_URL}/ask-gemini`, {
+			const geminiResponse = await fetch(`${CLOUDFARE_BACKEND_URL}/agents/devarshee/chat`, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 				},
-				body: JSON.stringify({ userMessage: userMessage, geminiApiKey: GEMINI_API_KEY }),
+				body: JSON.stringify({ message: userMessage }),
 			});
 			const geminiText = await geminiResponse.json();
 			removeTypingIndicator(responseRef);
-			addMessage(responseRef, 'system', geminiText);
+			addMessage(responseRef, 'system', geminiText.reply[0].text);
 		} catch (err) {
 			console.error('Error:', err);
 			removeTypingIndicator(responseRef);
@@ -59,8 +55,8 @@ const Controls = ({ responseRef }) => {
 			try {
 				const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 				const mediaRecorder = new MediaRecorder(stream);
-				mediaRecorderRef.current = mediaRecorder; // store in ref
-				audioChunksRef.current = []; // reset chunks
+				mediaRecorderRef.current = mediaRecorder;
+				audioChunksRef.current = [];
 
 				mediaRecorder.ondataavailable = (event) => {
 					audioChunksRef.current.push(event.data);
@@ -71,16 +67,14 @@ const Controls = ({ responseRef }) => {
 					audioChunksRef.current = [];
 					addMessage(responseRef, "user", "Transcribing audio...", false, true);
 
-					const formData = new FormData();
-					formData.append("file", audioBlob, "audio.wav");
-					formData.append("model", "whisper-large-v3-turbo");
-					formData.append("response_format", "verbose_json");
-
 					try {
-						const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+						const arrayBuffer = await audioBlob.arrayBuffer();
+						const response = await fetch(`${CLOUDFARE_BACKEND_URL}/transcribe`, {
 							method: "POST",
-							headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
-							body: formData,
+							headers: {
+								"Content-Type": "audio/wav",
+							},
+							body: arrayBuffer,
 						});
 
 						const data = await response.json();
@@ -90,17 +84,17 @@ const Controls = ({ responseRef }) => {
 
 						addMessage(responseRef, "user", data.text);
 						showTypingIndicator(responseRef);
-						console.log(JSON.stringify({ userMessage: data.text, geminiApiKey: GEMINI_API_KEY }));
-						const geminiResponse = await fetch(`${BACKEND_URL}/ask-gemini`, {
+
+						const geminiResponse = await fetch(`${CLOUDFARE_BACKEND_URL}/agents/devarshee/chat`, {
 							method: "POST",
 							headers: {
 								"Content-Type": "application/json",
 							},
-							body: JSON.stringify({ userMessage: data.text, geminiApiKey: GEMINI_API_KEY }),
+							body: JSON.stringify({ message: data.text }),
 						});
 						const geminiText = await geminiResponse.json();
 						removeTypingIndicator(responseRef);
-						addMessage(responseRef, "system", geminiText);
+						addMessage(responseRef, 'system', geminiText.reply[0].text);
 					} catch (err) {
 						console.error(err);
 						addMessage(responseRef, "system", "Transcription failed: " + err.message);
@@ -114,21 +108,10 @@ const Controls = ({ responseRef }) => {
 				console.error(err);
 			}
 		} else {
-			// Stop recording
 			mediaRecorderRef.current?.stop();
 			setIsRecording(false);
 		}
 	};
-
-	function arrayBufferToBase64(buffer) {
-		let binary = '';
-		const bytes = new Uint8Array(buffer);
-		const len = bytes.byteLength;
-		for (let i = 0; i < len; i++) {
-			binary += String.fromCharCode(bytes[i]);
-		}
-		return btoa(binary);
-	}
 
 	const handleCapture = async () => {
 		try {
