@@ -3,11 +3,10 @@ import { useEffect } from "react";
 import { register, unregisterAll } from "@tauri-apps/plugin-global-shortcut";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
-
-import "./interface.css";
-import Chat from "./components/Chat";
+import Chat from "./components/authenticated/Chat";
 import Auth from "./components/Auth";
 import Connect from "./components/Connect";
+import "./interface.css";
 
 const App = () => {
 	const win = getCurrentWindow();
@@ -28,19 +27,15 @@ const App = () => {
 				await register("CommandOrControl+N", async () => {
 					if (active) await win.show();
 				});
-
-				console.log("✅ Shortcuts registered");
 			} catch (err) {
-				console.error("❌ Failed to register shortcuts:", err);
+				console.error("Failed to register shortcuts:", err);
 			}
 		}
-
 		setupShortcuts();
-
 		return () => {
 			active = false;
 			unregisterAll()
-				.then(() => console.log("🧹 Shortcuts cleaned up"))
+				.then(() => console.log("Shortcuts cleaned up"))
 				.catch((err) => console.error("Cleanup failed:", err));
 		};
 	}, [win]);

@@ -1,9 +1,9 @@
 import React from 'react'
-import { Label } from "./ui/label";
-import { Button } from "./ui/button";
-import { Input } from "./ui/input";
+import { Label } from "../ui/label";
+import { Button } from "../ui/button";
+import { Input } from "../ui/input";
 import { useAtom } from "jotai";
-import { credentialsAtom, settingsVisibleAtom } from '../lib/atoms';
+import { credentialsAtom, settingsVisibleAtom } from '../../lib/atoms';
 
 const Settings = () => {
 	const [credentials, setCredentials] = useAtom(credentialsAtom)
