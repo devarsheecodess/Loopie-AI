@@ -11,12 +11,17 @@
 		"moduleResolution": "Node",
 		"esModuleInterop": true,
 		"forceConsistentCasingInFileNames": true,
-		"baseUrl": ".",
+		"skipLibCheck": true,
+		"baseUrl": "src",
 		"paths": {
 			"@/*": [
-				"src/*"
+				"*"
 			]
-		}
+		},
+		"types": [
+			"react",
+			"react-dom"
+		]
 	},
 	"include": [
 		"src"
