@@ -8,11 +8,22 @@ export function addMessage(responseRef, sender, message, isListening = false, is
 		messageDiv.id = "transcribing-msg";
 	}
 
+	let contentHTML = "";
+
+	if (typeof message === "string") {
+		contentHTML = `<p class="text-sm leading-relaxed">${message}</p>`;
+	} else if (message instanceof HTMLElement) {
+		const wrapper = document.createElement("div");
+		wrapper.className = "text-sm leading-relaxed";
+		wrapper.appendChild(message);
+		contentHTML = wrapper.outerHTML;
+	}
+
 	if (sender === "user") {
 		messageDiv.classList.add("justify-end");
 		messageDiv.innerHTML = `
       <div class="bg-gradient-to-r from-blue-500 to-blue-600 shadow-lg backdrop-blur-sm px-4 py-2 border border-blue-400 border-opacity-30 rounded-2xl rounded-br-md max-w-xs text-white">
-        <p class="text-sm leading-relaxed">${message}</p>
+        ${contentHTML}
       </div>`;
 	} else {
 		messageDiv.classList.add("justify-start");
@@ -28,7 +39,7 @@ export function addMessage(responseRef, sender, message, isListening = false, is
 		} else {
 			messageDiv.innerHTML = `
         <div class="bg-gradient-to-r from-gray-700 to-gray-600 shadow-lg backdrop-blur-sm px-4 py-2 border border-gray-600 border-opacity-50 rounded-2xl rounded-bl-md max-w-xs text-white">
-          <p class="text-sm leading-relaxed">${message}</p>
+          ${contentHTML}
         </div>`;
 		}
 	}

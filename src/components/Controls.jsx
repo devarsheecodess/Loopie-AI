@@ -48,39 +48,22 @@ const Controls = ({ responseRef }) => {
 				body: JSON.stringify({ userMessage: userMessage, geminiApiKey: GEMINI_API_KEY }),
 			});
 			const geminiText = await geminiResponse.json();
-			removeTypingIndicator(responseRef);
-			addMessage(responseRef, 'system', geminiText);
+			const isUIAuto =
+				(typeof geminiText === "string" && (geminiText === "UIAutomation" || geminiText === "ui_automation")) ||
+				(geminiText && (geminiText.result === "UIAutomation" || geminiText.result === "ui_automation" || geminiText.type === "ui_automation"));
+
+			if (isUIAuto) {
+				runUiAutomationLoop(userMessage, GEMINI_API_KEY);
+			} else {
+				removeTypingIndicator(responseRef);
+				addMessage(responseRef, 'system', geminiText);
+			}
 		} catch (err) {
 			console.error('Error:', err);
 			removeTypingIndicator(responseRef);
 			addMessage(responseRef, 'system', 'Sorry, I encountered an error processing your request.');
 		}
 	};
-
-	async function executeAction(action) {
-		try {
-			const normalized = normalizeAction(action);
-			if (!normalized) return { status: "failure", detail: "Invalid action" };
-
-			const resp = await fetch(`${BACKEND_URL}/execute-action`, {
-				method: "POST",
-				headers: { "Content-Type": "application/json" },
-				body: JSON.stringify(normalized),
-			});
-
-			if (!resp.ok) {
-				const text = await resp.text();
-				console.error("execute-action failed:", resp.status, text);
-				return { status: "failure", detail: text };
-			}
-
-			const result = await resp.json();
-			return result;
-		} catch (err) {
-			console.error("executeAction error:", err);
-			return { status: "failure", detail: String(err) };
-		}
-	}
 
 	async function captureScreenshotBase64() {
 		if (!win) throw new Error("Window not ready");
@@ -99,12 +82,13 @@ const Controls = ({ responseRef }) => {
 			const ctx = canvas.getContext("2d");
 			ctx.drawImage(bitmap, 0, 0);
 
-			const base64Image = canvas.toDataURL("image/png").split(",")[1];
+			const base64 = canvas.toDataURL("image/png").split(",")[1];
 
 			track.stop();
 			await win.show();
+			console.log("Captured screenshot size:", canvas.width, canvas.height);
 
-			return base64Image;
+			return { base64, width: canvas.width, height: canvas.height };
 		} catch (err) {
 			console.error("Screenshot failed:", err);
 			throw err;
@@ -122,30 +106,34 @@ const Controls = ({ responseRef }) => {
 			try {
 				showTypingIndicator(responseRef);
 
-				const base64Image = await captureScreenshotBase64();
+				const { base64, width, height } = await captureScreenshotBase64();
 
 				const resp = await fetch(`${BACKEND_URL}/next-action`, {
 					method: "POST",
 					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ base64Image, goal, geminiApiKey, lastState }),
+					body: JSON.stringify({
+						base64Image: base64,
+						goal,
+						geminiApiKey,
+						screenshotWidth: width,
+						screenshotHeight: height,
+						lastState
+					}),
 				});
 
 				if (!resp.ok) {
 					const text = await resp.text();
 					removeTypingIndicator(responseRef);
 					addMessage(responseRef, "system", `Backend /next-action error: ${resp.status} ${text}`);
-					console.error("next-action error:", resp.status, text);
 					break;
 				}
 
-				const rawAction = await resp.json();
-				const action = normalizeAction(rawAction);
-
+				const action = await resp.json();
 				removeTypingIndicator(responseRef);
 				addMessage(responseRef, "system", `Step ${i + 1}: ${action.action} ${action.description || ""}`);
 
 				showTypingIndicator(responseRef);
-				const execResult = await executeAction(action);
+				const execResult = await executeAction({ ...action, screenshotWidth: width, screenshotHeight: height });
 				removeTypingIndicator(responseRef);
 
 				if (execResult?.status === "success") {
@@ -153,7 +141,7 @@ const Controls = ({ responseRef }) => {
 					lastState = { action, result: "success" };
 				} else {
 					addMessage(responseRef, "system", `Execution failed: ${execResult?.detail || "unknown"}`);
-					lastState = { action, result: "failure", detail: execResult?.detail || "no_detail" };
+					lastState = { action, result: "failure" };
 				}
 
 				if (action.action === "done") {
@@ -162,7 +150,7 @@ const Controls = ({ responseRef }) => {
 					break;
 				}
 
-				await new Promise(r => setTimeout(r, 1000));
+				await new Promise(r => setTimeout(r, 800));
 			} catch (err) {
 				removeTypingIndicator(responseRef);
 				addMessage(responseRef, "system", `Automation loop error: ${String(err)}`);
@@ -175,6 +163,27 @@ const Controls = ({ responseRef }) => {
 			addMessage(responseRef, "system", "Automation stopped (max steps or error).");
 		}
 	}
+
+	async function executeAction(action) {
+		try {
+			const resp = await fetch(`${BACKEND_URL}/execute-action`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify(action),
+			});
+
+			if (!resp.ok) {
+				const text = await resp.text();
+				console.error("execute-action failed:", resp.status, text);
+				return { status: "failure", detail: text };
+			}
+			return await resp.json();
+		} catch (err) {
+			console.error("executeAction error:", err);
+			return { status: "failure", detail: String(err) };
+		}
+	}
+
 
 	const handleMicrophone = async () => {
 		if (!GROQ_API_KEY) {
@@ -260,6 +269,7 @@ const Controls = ({ responseRef }) => {
 			addMessage(responseRef, "user", "Capturing screen...");
 			if (!win) throw new Error("Window not yet ready");
 
+			// Capture screen
 			const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
 			await win.hide();
 			const track = stream.getVideoTracks()[0];
@@ -267,15 +277,31 @@ const Controls = ({ responseRef }) => {
 			const bitmap = await imageCapture.grabFrame();
 
 			showTypingIndicator(responseRef);
-			const canvas = document.createElement('canvas');
+
+			// Draw bitmap to canvas
+			const canvas = document.createElement("canvas");
 			canvas.width = bitmap.width;
 			canvas.height = bitmap.height;
-			const ctx = canvas.getContext('2d');
+			const ctx = canvas.getContext("2d");
 			ctx.drawImage(bitmap, 0, 0);
-			const base64Image = canvas.toDataURL('image/png').split(',')[1];
+
+			// Convert to base64
+			const base64Image = canvas.toDataURL("image/png").split(",")[1];
+
+			// Stop capture and show window again
 			track.stop();
 			await win.show();
 
+			// Create an <img> element to display in chat
+			const img = document.createElement("img");
+			img.src = `data:image/png;base64,${base64Image}`;
+			img.alt = "Screenshot";
+			img.className = "rounded-lg max-w-full";
+
+			// Add image to chat
+			addMessage(responseRef, "user", img);
+
+			// Send image to backend for analysis
 			const response = await fetch(`${BACKEND_URL}/analyse-img`, {
 				method: "POST",
 				headers: {
@@ -283,15 +309,16 @@ const Controls = ({ responseRef }) => {
 				},
 				body: JSON.stringify({ image: base64Image, geminiApiKey: GEMINI_API_KEY }),
 			});
+
 			const data = await response.json();
 			removeTypingIndicator(responseRef);
 			addMessage(responseRef, "system", data.description);
 		} catch (err) {
 			console.error(err);
-			addMessage(responseRef, 'system', err.message || String(err));
-			alert('Failed to capture screen');
+			addMessage(responseRef, "system", err.message || String(err));
+			alert("Failed to capture screen");
 		} finally {
-			removeTypingIndicator();
+			removeTypingIndicator(responseRef);
 		}
 	};
 
