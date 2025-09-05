@@ -1,10 +1,10 @@
 import { Button } from "./ui/button";
-import LoopieLogo from "../../public/loopie-logo.png";
-import GoogleCalendarLogo from "../../public/google-calendar.png";
-import GmailLogo from "../../public/gmail.svg";
-import JiraLogo from "../../public/jira.svg";
-import SlackLogo from "../../public/slack.svg";
-import AuthBG from "../../public/auth-bg.png";
+import LoopieLogo from "@/assets/loopie-logo.png";
+import GoogleCalendarLogo from "@/assets/google-calendar.png";
+import GmailLogo from "@/assets/gmail.svg";
+import JiraLogo from "@/assets/jira.svg";
+import SlackLogo from "@/assets/slack.svg";
+import AuthBG from "@/assets/auth-bg.png";
 import { Link } from "react-router-dom";
 
 const Connect = () => {

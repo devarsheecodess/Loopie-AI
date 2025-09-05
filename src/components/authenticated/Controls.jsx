@@ -1,10 +1,12 @@
 import { useState, useRef } from 'react'
 import { useAtom } from 'jotai';
-import { Calendar, Circle, Eye, Mic, Settings, Trash, X } from "lucide-react";
+import { Calendar, Circle, Eye, LayoutDashboard, MessagesSquare, Mic, Settings, Trash } from "lucide-react";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { settingsVisibleAtom, calendarVisibleAtom, credentialsAtom } from '../../lib/atoms'
+import { settingsVisibleAtom, calendarVisibleAtom, credentialsAtom, chatVisibleAtom, dashboardVisibleAtom, screenshotAtom } from '../../lib/atoms'
 import { addMessage, removeTypingIndicator, showTypingIndicator } from "../../functions/chatElements";
-import calendarLogo from "../../assets/calendar-connect.png";
+import { Button } from '../ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import LoopieLogo from "@/assets/loopie-logo.png";
 
 const Controls = ({ responseRef }) => {
 	const win = getCurrentWindow()
@@ -14,13 +16,15 @@ const Controls = ({ responseRef }) => {
 	const [isRecording, setIsRecording] = useState(false);
 	const [inputValue, setInputValue] = useState("");
 	const [credentials] = useAtom(credentialsAtom);
-	const [pendingScreenshot, setPendingScreenshot] = useState(null);
+	const [pendingScreenshot, setPendingScreenshot] = useAtom(screenshotAtom);
 	const GROQ_API_KEY = credentials.groqKey || import.meta.env.VITE_GROQ_KEY;
 	const GEMINI_API_KEY = credentials.geminiKey || import.meta.env.VITE_GEMINI_KEY;
 	const mediaRecorderRef = useRef(null);
 	const audioChunksRef = useRef([]);
 	const BACKEND_URL = import.meta.env.VITE_BACKEND_URL;
 	const CLOUDFARE_BACKEND_URL = import.meta.env.VITE_CLOUDFARE_BACKEND_URL;
+	const [chatModal, setChatModal] = useAtom(chatVisibleAtom);
+	const [dashboardModal, setDashboardModal] = useAtom(dashboardVisibleAtom);
 
 	const handleMicrophone = async () => {
 		if (!GROQ_API_KEY) {
@@ -51,6 +55,7 @@ const Controls = ({ responseRef }) => {
 					formData.append("response_format", "verbose_json");
 
 					try {
+						setChatModal(true)
 						const response = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
 							method: "POST",
 							headers: { Authorization: `Bearer ${GROQ_API_KEY}` },
@@ -120,59 +125,6 @@ const Controls = ({ responseRef }) => {
 		}
 	};
 
-	const handleSendMessage = async () => {
-		const userMessage = inputValue.trim() || " ";
-		if (!userMessage && !pendingScreenshot) return;
-
-
-		try {
-			if (pendingScreenshot) {
-				const img = document.createElement("img");
-				img.src = `data:image/png;base64,${pendingScreenshot}`;
-				img.alt = "Screenshot";
-				img.className = "max-w-full h-auto rounded-lg";
-
-				const textSpan = document.createElement("span");
-				textSpan.textContent = userMessage || "";
-				textSpan.className = "text-white text-sm";
-
-				setPendingScreenshot(null);
-				addMessage(responseRef, "user", [img, textSpan]);
-				showTypingIndicator(responseRef);
-
-				const response = await fetch(`${BACKEND_URL}/analyse-img`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						image: pendingScreenshot,
-						prompt: userMessage || "Describe this image.",
-						geminiApiKey: GEMINI_API_KEY
-					}),
-				});
-
-				const data = await response.json();
-				addMessage(responseRef, "system", data.description);
-			} else {
-				addMessage(responseRef, "user", userMessage);
-				showTypingIndicator(responseRef);
-
-				const geminiResponse = await fetch(`${BACKEND_URL}/ask-gemini`, {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({ userMessage, geminiApiKey: GEMINI_API_KEY }),
-				});
-				const geminiText = await geminiResponse.json();
-				addMessage(responseRef, "system", geminiText);
-			}
-		} catch (err) {
-			console.error("Error:", err);
-			addMessage(responseRef, "system", "Sorry, I encountered an error.");
-		} finally {
-			removeTypingIndicator(responseRef);
-			setInputValue("");
-		}
-	};
-
 	async function captureScreenshotBase64() {
 		if (!win) throw new Error("Window not ready");
 		try {
@@ -207,11 +159,10 @@ const Controls = ({ responseRef }) => {
 		try {
 			if (!win) throw new Error("Window not yet ready");
 
-			// Capture screenshot as base64
 			const base64Image = await captureScreenshotBase64();
 
-			// Attach screenshot to input (preview above input bar)
 			setPendingScreenshot(base64Image);
+			setChatModal(true);
 		} catch (err) {
 			console.error(err);
 			addMessage(responseRef, "system", err.message || String(err));
@@ -219,21 +170,12 @@ const Controls = ({ responseRef }) => {
 		}
 	};
 
-	const handleCalendar = () => {
-		setSettingsModal(false);
-		setCalendarModal(!calendarModal);
-	};
-
-	const handleSettings = () => {
+	const cleanModals = () => {
 		setCalendarModal(false);
-		setSettingsModal(!settingsModal);
-	};
-
-	const handleConnectCalendar = () => { };
-
-	const handleClose = async () => {
-		if (win) await win.close();
-	};
+		setSettingsModal(false);
+		setChatModal(false);
+		setDashboardModal(false);
+	}
 
 	return (
 		<div className="flex flex-col w-full">
@@ -253,73 +195,96 @@ const Controls = ({ responseRef }) => {
 				</div>
 			)}
 
-			<div className="flex justify-between items-center bg-black shadow-2xl backdrop-blur-xl mb-4 p-3 border border-white border-opacity-10 rounded-xl draggable">
-				{/* Mic Button */}
-				<button
-					id="micButton"
-					onClick={handleMicrophone}
-					className={`flex justify-center items-center ${isRecording ? "bg-gradient-to-br from-red-500 to-red-600 shadow-lg shadow-red-500/100" : "bg-gradient-to-br from-blue-500 to-blue-600"} shadow-lg hover:shadow-2xl hover:shadow-blue-500/50 px-4 rounded-full w-10 h-10 text-white hover:scale-110 transition-all duration-300 no-drag`}
-				>
-					{isRecording ? (
-						<Circle className="flex-shrink-0 w-5 md:w-5 h-5 md:h-5" strokeWidth={2} />
-					) : (
-						<Mic className="flex-shrink-0 w-5 md:w-5 h-5 md:h-5" strokeWidth={2} />
-					)}
-				</button>
+			<div className="flex justify-between items-center gap-4 bg-black/90 shadow-lg backdrop-blur-xl mx-auto mb-4 px-4 py-2 border border-white/10 rounded-full w-full draggable">
+				<img src={LoopieLogo} className="mr-4 w-10 h-10" />
+				<TooltipProvider>
+					<div className="flex gap-3">
 
-				{/* Text Input */}
-				<input
-					type="text"
-					id="textInput"
-					value={inputValue}
-					onChange={(e) => setInputValue(e.target.value)}
-					onKeyDown={(e) => { if (e.key === "Enter") handleSendMessage(); }}
-					placeholder="Ask me anything..."
-					className="flex-1 bg-white bg-opacity-10 mx-1.5 px-4 py-2 border border-white border-opacity-20 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 text-black text-sm transition-all duration-200 no-drag placeholder-gray-300"
-				/>
+						{/* Mic / Listen */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									onClick={() => {
+										setSettingsModal(false);
+										setCalendarModal(false);
+										setDashboardModal(false);
+										if (!chatModal) setChatModal(true);
+										handleMicrophone();
+									}}
+									className={`flex items-center justify-center ${isRecording
+										? "bg-red-600 hover:bg-red-500"
+										: "bg-purple-600 hover:bg-purple-500"
+										} shadow-md w-9 h-9 rounded-full text-white transition`}
+								>
+									{isRecording ? <Circle className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>
+								{isRecording ? "Listening..." : "Listen"}
+							</TooltipContent>
+						</Tooltip>
 
-				{/* Action Buttons */}
-				<div className="flex items-center space-x-1 no-drag">
-					<button
-						id="captureBtn"
-						onClick={handleCapture}
-						className="flex justify-center items-center bg-white bg-opacity-10 hover:bg-opacity-20 border border-white border-opacity-20 rounded-lg w-8 h-8 text-white transition-all hover:-translate-y-0.5 duration-200"
-					>
-						<Eye className="flex-shrink-0 w-5 md:w-5 h-5 md:h-5 text-black" strokeWidth={2} />
-					</button>
+						{/* Ask Loopie */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									onClick={() => { cleanModals(); setChatModal(!chatModal); }}
+									className={`flex justify-center items-center bg-white/10 hover:bg-white/20 border border-white/20 rounded-full w-9 h-9 text-white transition`}
+								>
+									<MessagesSquare className="w-4 h-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Ask Loopie</TooltipContent>
+						</Tooltip>
 
-					<button
-						id="calendarButton"
-						onClick={handleCalendar}
-						className="flex justify-center items-center bg-white bg-opacity-10 hover:bg-opacity-20 border border-white border-opacity-20 rounded-lg w-8 h-8 text-white transition-all hover:-translate-y-0.5 duration-200"
-					>
-						<Calendar className="flex-shrink-0 w-5 md:w-5 h-5 md:h-5 text-black" strokeWidth={2} />
-					</button>
+						{/* Capture screen */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									onClick={handleCapture}
+									className={`flex justify-center items-center bg-white/10 hover:bg-white/20 border border-white/20 rounded-full w-9 h-9 text-white transition`}
+								>
+									<Eye className="w-4 h-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Capture Screen</TooltipContent>
+						</Tooltip>
 
-					<button
-						id="settingsButton"
-						onClick={handleSettings}
-						className="flex justify-center items-center bg-white bg-opacity-10 hover:bg-opacity-20 border border-white border-opacity-20 rounded-lg w-8 h-8 text-white transition-all hover:-translate-y-0.5 duration-200"
-					>
-						<Settings className="flex-shrink-0 w-5 md:w-5 h-5 md:h-5 text-black" strokeWidth={2} />
-					</button>
+						{/* Calendar */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button onClick={() => { cleanModals(); setCalendarModal(!calendarModal); }} className={`flex justify-center items-center bg-white/10 hover:bg-white/20 border border-white/20 rounded-full w-9 h-9 text-white transition`}>
+									<Calendar className="w-4 h-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Calendar</TooltipContent>
+						</Tooltip>
 
-					<button
-						id="calendarConnectBtn"
-						onClick={handleConnectCalendar}
-						className="flex justify-center items-center bg-white bg-opacity-10 hover:bg-opacity-20 border border-white border-opacity-20 rounded-lg w-8 h-8 transition-all hover:-translate-y-0.5 duration-200"
-					>
-						<img src={calendarLogo} className="w-5 h-5" />
-					</button>
+						{/* Settings */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button onClick={() => { cleanModals(); setSettingsModal(!settingsModal); }} className={`flex justify-center items-center bg-white/10 hover:bg-white/20 border border-white/20 rounded-full w-9 h-9 text-white transition`}>
+									<Settings className="w-4 h-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Settings</TooltipContent>
+						</Tooltip>
 
-					<button
-						id="closeButton"
-						onClick={handleClose}
-						className="flex justify-center items-center bg-red-600 bg-opacity-20 hover:bg-opacity-30 border border-red-400 border-opacity-30 rounded-lg w-8 h-8 text-red-400 transition-all hover:-translate-y-0.5 duration-200"
-					>
-						<X className="flex-shrink-0 w-5 md:w-5 h-5 md:h-5 text-red-300" strokeWidth={2} />
-					</button>
-				</div>
+						{/* Dashboard */}
+						<Tooltip>
+							<TooltipTrigger asChild>
+								<Button
+									onClick={() => { cleanModals(); setDashboardModal(!dashboardModal); }}
+									className={`flex justify-center items-center bg-white/10 hover:bg-white/20 border border-white/20 rounded-full w-9 h-9 text-white transition`}
+								>
+									<LayoutDashboard className="w-4 h-4" />
+								</Button>
+							</TooltipTrigger>
+							<TooltipContent>Dashboard</TooltipContent>
+						</Tooltip>
+
+					</div>
+				</TooltipProvider>
 			</div>
 		</div>
 	);

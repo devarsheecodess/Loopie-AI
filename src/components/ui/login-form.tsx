@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import GoogleLogo from '../../../public/google-logo.png'
+import GoogleLogo from '../../assets/google-logo.png'
 import { useNavigate } from 'react-router-dom'
 
 export function LoginForm({

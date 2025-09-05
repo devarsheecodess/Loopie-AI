@@ -1,6 +1,6 @@
 import { LoginForm } from "./ui/login-form"
-import LoopieLogo from "../../public/loopie-logo.png"
-import AuthBG from "../../public/auth-bg.png"
+import LoopieLogo from "../assets/loopie-logo.png"
+import AuthBG from "../assets/auth-bg.png"
 
 export default function Auth() {
 	return (
